@@ -1,5 +1,10 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
+    "outDir": "dist",
+    "paths": {
+      "/opt/nodejs/*": ["layers/nodejs/*"]
+    },
     "target": "ES2018",
     "module": "commonjs",
     "lib": ["es2018"],
@@ -17,10 +22,8 @@
     "inlineSources": true,
     "experimentalDecorators": true,
     "strictPropertyInitialization": false,
-    "typeRoots": ["./node_modules/@types"],
-    "outDir": "./dist",
-    "rootDir": "."
+    "typeRoots": ["./node_modules/@types"]
   },
   "exclude": ["node_modules", "cdk.out", "dist"],
-  "include": ["src/**/*", "bin/**/*", "lib/**/*"]
+  "include": ["bin/**/*", "lib/**/*", "layers/**/*", "functions/**/*"]
 }
