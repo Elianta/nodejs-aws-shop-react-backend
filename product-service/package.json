@@ -8,8 +8,9 @@
     "prebuild": "rm -rf dist",
     "build": "tsc",
     "watch": "tsc -w",
-    "test": "jest",
+    "test": "jest --coverage",
     "cdk": "cdk",
+    "predeploy": "npm test",
     "deploy": "npm run build && cdk deploy",
     "destroy": "cdk destroy"
   },

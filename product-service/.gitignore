@@ -21,3 +21,8 @@ Thumbs.db
 
 # Environment variables
 .env
+
+# Test coverage
+coverage/
+.coverage
+*.lcov
