@@ -8,10 +8,10 @@ export class ProductServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    const productsLayer = new lambda.LayerVersion(this, "ProductsLayer", {
+    const sharedLayer = new lambda.LayerVersion(this, "NodeJsLayer", {
       code: lambda.Code.fromAsset(path.join(__dirname, "../dist/layers")),
       compatibleRuntimes: [lambda.Runtime.NODEJS_20_X],
-      description: "Products mock data layer",
+      description: "Node.js dependencies layer",
     });
 
     // Create Lambda functions
@@ -21,7 +21,7 @@ export class ProductServiceStack extends cdk.Stack {
       code: lambda.Code.fromAsset(
         path.join(__dirname, "../dist/functions/get-products-list")
       ),
-      layers: [productsLayer],
+      layers: [sharedLayer],
     });
 
     const getProductById = new lambda.Function(this, "getProductById", {
@@ -30,7 +30,17 @@ export class ProductServiceStack extends cdk.Stack {
       code: lambda.Code.fromAsset(
         path.join(__dirname, "../dist/functions/get-product-by-id")
       ),
-      layers: [productsLayer],
+      layers: [sharedLayer],
+    });
+
+    // Create Swagger UI Lambda
+    const swaggerUi = new lambda.Function(this, "SwaggerUI", {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: "handler.handler",
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, "../dist/functions/swagger-ui")
+      ),
+      layers: [sharedLayer],
     });
 
     // Create API Gateway
@@ -51,5 +61,13 @@ export class ProductServiceStack extends cdk.Stack {
 
     const product = products.addResource("{productId}");
     product.addMethod("GET", new apigateway.LambdaIntegration(getProductById));
+
+    const docs = api.root.addResource("docs");
+    docs.addMethod("GET", new apigateway.LambdaIntegration(swaggerUi));
+
+    new cdk.CfnOutput(this, "SwaggerUIDocsURL", {
+      value: `${api.url}docs`,
+      description: "Swagger UI URL",
+    });
   }
 }

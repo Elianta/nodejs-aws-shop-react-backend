@@ -25,5 +25,11 @@
     "typeRoots": ["./node_modules/@types"]
   },
   "exclude": ["node_modules", "cdk.out", "dist"],
-  "include": ["bin/**/*", "lib/**/*", "layers/**/*", "functions/**/*"]
+  "include": [
+    "bin/**/*",
+    "lib/**/*",
+    "layers/**/*",
+    "functions/**/*",
+    "scripts/**/*"
+  ]
 }
