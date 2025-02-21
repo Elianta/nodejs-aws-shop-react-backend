@@ -59,8 +59,18 @@ export class ProductServiceStack extends cdk.Stack {
       new apigateway.LambdaIntegration(getProductsList)
     );
 
+    new cdk.CfnOutput(this, "ProductsListURL", {
+      value: `${api.url}products`,
+      description: "Products list URL",
+    });
+
     const product = products.addResource("{productId}");
     product.addMethod("GET", new apigateway.LambdaIntegration(getProductById));
+
+    new cdk.CfnOutput(this, "ProductByIdURL", {
+      value: `${api.url}products/{productId}`,
+      description: "Product by ID URL",
+    });
 
     const docs = api.root.addResource("docs");
     docs.addMethod("GET", new apigateway.LambdaIntegration(swaggerUi));
