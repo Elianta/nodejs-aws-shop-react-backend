@@ -53,11 +53,14 @@ export class ProductServiceStack extends cdk.Stack {
         path.join(__dirname, "../dist/functions/get-product-by-id")
       ),
       layers: [sharedLayer],
+      environment: lambdaEnv,
     });
 
     // Grant permissions to Lambda functions
     productsTable.grantReadData(getProductsList);
     stocksTable.grantReadData(getProductsList);
+    productsTable.grantReadData(getProductById);
+    stocksTable.grantReadData(getProductById);
 
     // Create Swagger UI Lambda
     const swaggerUi = new lambda.Function(this, "SwaggerUI", {
