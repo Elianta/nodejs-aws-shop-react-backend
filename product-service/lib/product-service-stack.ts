@@ -3,16 +3,37 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import { Construct } from "constructs";
 import * as path from "path";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 
 export class ProductServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+
+    // Import existing DynamoDB tables
+    const productsTable = dynamodb.Table.fromTableName(
+      this,
+      "ProductsTable",
+      "products"
+    );
+
+    const stocksTable = dynamodb.Table.fromTableName(
+      this,
+      "StocksTable",
+      "stocks"
+    );
 
     const sharedLayer = new lambda.LayerVersion(this, "NodeJsLayer", {
       code: lambda.Code.fromAsset(path.join(__dirname, "../dist/layers")),
       compatibleRuntimes: [lambda.Runtime.NODEJS_20_X],
       description: "Node.js dependencies layer",
     });
+
+    // Common environment variables for Lambda functions
+    const lambdaEnv = {
+      PRODUCTS_TABLE_NAME: productsTable.tableName,
+      STOCKS_TABLE_NAME: stocksTable.tableName,
+      REGION: cdk.Stack.of(this).region,
+    };
 
     // Create Lambda functions
     const getProductsList = new lambda.Function(this, "getProductsList", {
@@ -22,6 +43,7 @@ export class ProductServiceStack extends cdk.Stack {
         path.join(__dirname, "../dist/functions/get-products-list")
       ),
       layers: [sharedLayer],
+      environment: lambdaEnv,
     });
 
     const getProductById = new lambda.Function(this, "getProductById", {
@@ -32,6 +54,10 @@ export class ProductServiceStack extends cdk.Stack {
       ),
       layers: [sharedLayer],
     });
+
+    // Grant permissions to Lambda functions
+    productsTable.grantReadData(getProductsList);
+    stocksTable.grantReadData(getProductsList);
 
     // Create Swagger UI Lambda
     const swaggerUi = new lambda.Function(this, "SwaggerUI", {
