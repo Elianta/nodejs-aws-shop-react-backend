@@ -1,63 +1,17 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import { products } from "../../../mocks/products";
+import {
+  TEST_PRODUCTS_TABLE,
+  TEST_STOCKS_TABLE,
+  shouldThrow,
+  setupDynamoDBMock,
+} from "../../../mocks/dynamodb";
 
-// Constants
-const TEST_PRODUCTS_TABLE = "test-products-table";
-const TEST_STOCKS_TABLE = "test-stocks-table";
+// Setup mocks
+setupDynamoDBMock();
 
 // Store original env variables to restore later
 const originalEnv = { ...process.env };
-
-// Mock control flag
-let shouldThrowError = false;
-
-jest.mock("@aws-sdk/lib-dynamodb", () => {
-  const originalModule = jest.requireActual("@aws-sdk/lib-dynamodb");
-  return {
-    ...originalModule,
-    DynamoDBDocumentClient: {
-      from: jest.fn().mockReturnValue({
-        send: jest.fn().mockImplementation((command) => {
-          if (shouldThrowError) {
-            return Promise.reject(new Error("DynamoDB error"));
-          }
-
-          if (command instanceof originalModule.GetCommand) {
-            console.log("table name", command.input.TableName);
-            if (command.input.TableName === TEST_PRODUCTS_TABLE) {
-              const productId = command.input.Key.id;
-              const product = products.find((p) => p.id === productId);
-
-              return Promise.resolve({
-                Item: product || null,
-              });
-            } else if (command.input.TableName === TEST_STOCKS_TABLE) {
-              const productId = command.input.Key.product_id;
-              const productIndex = products.findIndex(
-                (p) => p.id === productId
-              );
-
-              if (productIndex !== -1) {
-                return Promise.resolve({
-                  Item: {
-                    product_id: productId,
-                    count: (productIndex % 10) + 1, // Deterministic but varied values
-                  },
-                });
-              }
-
-              return Promise.resolve({
-                Item: null,
-              });
-            }
-          }
-          return Promise.resolve({});
-        }),
-      }),
-    },
-    GetCommand: originalModule.GetCommand,
-  };
-});
 
 import { handler } from "../handler";
 
@@ -84,7 +38,7 @@ describe("getProductById Lambda", () => {
     // Restore original environment variables
     process.env = { ...originalEnv };
     // Reset the error flag
-    shouldThrowError = false;
+    shouldThrow(false);
   });
 
   it("should return product when valid ID is provided", async () => {
@@ -120,7 +74,7 @@ describe("getProductById Lambda", () => {
   });
 
   it("should return 500 when an error occurs", async () => {
-    shouldThrowError = true;
+    shouldThrow(true);
 
     const response = await invokeHandler(products[0].id);
 

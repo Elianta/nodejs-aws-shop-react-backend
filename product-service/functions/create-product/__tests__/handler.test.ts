@@ -1,42 +1,19 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import { ProductWithStock } from "/opt/nodejs/types";
+import {
+  TEST_PRODUCTS_TABLE,
+  TEST_STOCKS_TABLE,
+  shouldThrow,
+  setupDynamoDBMock,
+} from "../../../mocks/dynamodb";
+import { setupUuidMock, TEST_UUID } from "../../../mocks/uuid";
 
-// Constants
-const TEST_PRODUCTS_TABLE = "test-products-table";
-const TEST_STOCKS_TABLE = "test-stocks-table";
-const TEST_UUID = "test-uuid-123";
+// Setup mocks
+setupDynamoDBMock();
+setupUuidMock();
 
 // Store original env variables to restore later
 const originalEnv = { ...process.env };
-
-// Mock UUID to return predictable values
-jest.mock("uuid", () => ({
-  v4: jest.fn().mockReturnValue(TEST_UUID),
-}));
-
-// Mock control flag
-let shouldThrowError = false;
-
-jest.mock("@aws-sdk/lib-dynamodb", () => {
-  const originalModule = jest.requireActual("@aws-sdk/lib-dynamodb");
-  return {
-    ...originalModule,
-    DynamoDBDocumentClient: {
-      from: jest.fn().mockReturnValue({
-        send: jest.fn().mockImplementation((command) => {
-          if (shouldThrowError) {
-            return Promise.reject(new Error("DynamoDB error"));
-          }
-          if (command instanceof originalModule.TransactWriteCommand) {
-            return Promise.resolve({});
-          }
-          return Promise.resolve({});
-        }),
-      }),
-    },
-    TransactWriteCommand: originalModule.TransactWriteCommand,
-  };
-});
 
 import { handler } from "../handler";
 
@@ -68,7 +45,7 @@ describe("createProduct Lambda", () => {
     // Restore original environment variables
     process.env = { ...originalEnv };
     // Reset the error flag
-    shouldThrowError = false;
+    shouldThrow(false);
   });
 
   it("should create a product successfully", async () => {
@@ -118,7 +95,7 @@ describe("createProduct Lambda", () => {
   });
 
   it("should return 500 when an error occurs", async () => {
-    shouldThrowError = true;
+    shouldThrow(true);
     const response = await invokeHandler(testProductData);
 
     expect(response.statusCode).toBe(500);
