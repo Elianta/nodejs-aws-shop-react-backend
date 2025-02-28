@@ -56,11 +56,23 @@ export class ProductServiceStack extends cdk.Stack {
       environment: lambdaEnv,
     });
 
+    const createProduct = new lambda.Function(this, "createProduct", {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: "handler.handler",
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, "../dist/functions/create-product")
+      ),
+      layers: [sharedLayer],
+      environment: lambdaEnv,
+    });
+
     // Grant permissions to Lambda functions
     productsTable.grantReadData(getProductsList);
     stocksTable.grantReadData(getProductsList);
     productsTable.grantReadData(getProductById);
     stocksTable.grantReadData(getProductById);
+    productsTable.grantWriteData(createProduct);
+    stocksTable.grantWriteData(createProduct);
 
     // Create Swagger UI Lambda
     const swaggerUi = new lambda.Function(this, "SwaggerUI", {
@@ -95,6 +107,7 @@ export class ProductServiceStack extends cdk.Stack {
 
     const product = products.addResource("{productId}");
     product.addMethod("GET", new apigateway.LambdaIntegration(getProductById));
+    products.addMethod("POST", new apigateway.LambdaIntegration(createProduct));
 
     new cdk.CfnOutput(this, "ProductByIdURL", {
       value: `${api.url}products/{productId}`,
