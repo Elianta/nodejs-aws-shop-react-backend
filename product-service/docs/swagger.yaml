@@ -3,6 +3,9 @@ info:
   title: Products Service API
   version: 1.0.0
   description: API for managing products
+servers:
+  - url: https://oj77l1z93b.execute-api.eu-central-1.amazonaws.com/prod
+    description: Production server
 paths:
   /products:
     get:
@@ -18,6 +21,36 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Product"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      summary: Create a new product
+      description: Creates a new product with stock information
+      operationId: createProduct
+      requestBody:
+        description: Product object that needs to be added
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductCreate"
+      responses:
+        "201":
+          description: Product created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "500":
           description: Internal server error
           content:
@@ -43,6 +76,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Product"
+        "400":
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Product not found
           content:
@@ -62,6 +101,7 @@ components:
       properties:
         id:
           type: string
+          format: uuid
           description: The product identifier
         title:
           type: string
@@ -77,6 +117,25 @@ components:
           description: Available quantity
       required:
         - id
+        - title
+        - price
+        - count
+    ProductCreate:
+      type: object
+      properties:
+        title:
+          type: string
+          description: The product title
+        description:
+          type: string
+          description: The product description
+        price:
+          type: number
+          description: The product price
+        count:
+          type: integer
+          description: Available quantity
+      required:
         - title
         - price
         - count
