@@ -1,50 +1,18 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import { products } from "../../../mocks/products";
 import { ProductWithStock } from "/opt/nodejs/types";
+import {
+  TEST_PRODUCTS_TABLE,
+  TEST_STOCKS_TABLE,
+  shouldThrow,
+  setupDynamoDBMock,
+} from "../../../mocks/dynamodb";
 
-// Constants
-const TEST_PRODUCTS_TABLE = "test-products-table";
-const TEST_STOCKS_TABLE = "test-stocks-table";
+// Setup mocks
+setupDynamoDBMock();
 
 // Store original env variables to restore later
 const originalEnv = { ...process.env };
-
-// Mock control flag
-let shouldThrowError = false;
-
-jest.mock("@aws-sdk/lib-dynamodb", () => {
-  const originalModule = jest.requireActual("@aws-sdk/lib-dynamodb");
-  return {
-    ...originalModule,
-    DynamoDBDocumentClient: {
-      from: jest.fn().mockReturnValue({
-        send: jest.fn().mockImplementation((command) => {
-          if (shouldThrowError) {
-            return Promise.reject(new Error("DynamoDB error"));
-          }
-
-          if (command instanceof originalModule.ScanCommand) {
-            if (command.input.TableName === TEST_PRODUCTS_TABLE) {
-              return Promise.resolve({
-                Items: products,
-              });
-            } else if (command.input.TableName === TEST_STOCKS_TABLE) {
-              const mockStocks = products.map((product, index) => ({
-                product_id: product.id,
-                count: (index % 10) + 1, // Deterministic but varied values
-              }));
-              return Promise.resolve({
-                Items: mockStocks,
-              });
-            }
-          }
-          return Promise.resolve({});
-        }),
-      }),
-    },
-    ScanCommand: originalModule.ScanCommand,
-  };
-});
 
 import { handler } from "../handler";
 
@@ -67,7 +35,7 @@ describe("getProductsList Lambda", () => {
     // Restore original environment variables
     process.env = { ...originalEnv };
     // Reset the error flag
-    shouldThrowError = false;
+    shouldThrow(false);
   });
 
   it("should return all products", async () => {
@@ -97,7 +65,7 @@ describe("getProductsList Lambda", () => {
   });
 
   it("should return 500 when an error occurs", async () => {
-    shouldThrowError = true;
+    shouldThrow(true);
 
     const response = await invokeHandler();
 

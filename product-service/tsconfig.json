@@ -30,6 +30,7 @@
     "lib/**/*",
     "layers/**/*",
     "functions/**/*",
-    "scripts/**/*"
+    "scripts/**/*",
+    "mocks/**/*"
   ]
 }
