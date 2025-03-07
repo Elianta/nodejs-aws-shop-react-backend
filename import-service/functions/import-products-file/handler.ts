@@ -16,6 +16,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         headers: {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Credentials": true,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ message: "File name is required" }),
       };
@@ -38,6 +39,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Credentials": true,
+        "Content-Type": "text/plain",
       },
       body: signedUrl,
     };
@@ -49,6 +51,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Credentials": true,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({ message: "Error generating signed URL" }),
     };
