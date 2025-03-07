@@ -1,0 +1,53 @@
+openapi: 3.0.1
+info:
+  title: Import Service API
+  version: 1.0.0
+  description: API for importing products from CSV files
+servers:
+  - url: https://mumn7d9j79.execute-api.eu-central-1.amazonaws.com/prod
+    description: Production server
+paths:
+  /import:
+    get:
+      summary: Generate a pre-signed URL for uploading a CSV file
+      description: Returns a pre-signed S3 URL that allows uploading a file to the 'uploaded/' folder in the S3 bucket
+      operationId: importProductsFile
+      parameters:
+        - name: name
+          in: query
+          description: Name of the file to be uploaded
+          required: true
+          schema:
+            type: string
+            example: products.csv
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: Pre-signed S3 URL for file upload
+                example: https://import-service-bucket-fdrh6bfdj7klv.s3.amazonaws.com/uploaded/products.csv?AWSAccessKeyId=...
+        "400":
+          description: Bad request - missing or invalid filename
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: File name is required
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Error generating pre-signed URL
+components:
+  schemas: {}

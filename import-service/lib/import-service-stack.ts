@@ -10,6 +10,7 @@ export class ImportServiceStack extends cdk.Stack {
   private importBucket: s3.IBucket;
   private importProductsFileLambda: lambda.Function;
   private importFileParserLambda: lambda.Function;
+  private swaggerUi: lambda.Function;
   private sharedLayer: lambda.LayerVersion;
   private api: apigateway.RestApi;
 
@@ -78,6 +79,16 @@ export class ImportServiceStack extends cdk.Stack {
         timeout: cdk.Duration.seconds(30),
       }
     );
+
+    // Create the Swagger UI Lambda function
+    this.swaggerUi = new lambda.Function(this, "SwaggerUI", {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: "handler.handler",
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, "../dist/functions/swagger-ui")
+      ),
+      layers: [this.sharedLayer],
+    });
   }
 
   private setupS3Permissions(): void {
@@ -125,12 +136,21 @@ export class ImportServiceStack extends cdk.Stack {
         "method.request.querystring.name": true, // Required parameter
       },
     });
+
+    // Swagger UI endpoint
+    const docs = this.api.root.addResource("docs");
+    docs.addMethod("GET", new apigateway.LambdaIntegration(this.swaggerUi));
   }
 
   private createOutputs(): void {
     new cdk.CfnOutput(this, "ImportServiceApiUrl", {
       value: this.api.url,
       description: "URL of the Import Service API",
+    });
+
+    new cdk.CfnOutput(this, "SwaggerUIDocsURL", {
+      value: `${this.api.url}docs`,
+      description: "Swagger UI URL",
     });
   }
 }
