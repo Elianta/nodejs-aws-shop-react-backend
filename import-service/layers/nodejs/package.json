@@ -1,0 +1,8 @@
+{
+  "name": "lambda-layers",
+  "version": "1.0.0",
+  "dependencies": {
+    "csv-parser": "^3.2.0",
+    "js-yaml": "^4.1.0"
+  }
+}
