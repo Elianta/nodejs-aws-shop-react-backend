@@ -2,12 +2,14 @@ import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as s3n from "aws-cdk-lib/aws-s3-notifications";
+import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as path from "path";
 
 export class ImportServiceStack extends cdk.Stack {
   private importBucket: s3.IBucket;
+  private catalogItemsQueue: sqs.IQueue;
   private importProductsFileLambda: lambda.Function;
   private importFileParserLambda: lambda.Function;
   private swaggerUi: lambda.Function;
@@ -19,8 +21,10 @@ export class ImportServiceStack extends cdk.Stack {
 
     this.createSharedLayer();
     this.createS3Bucket();
+    this.setupSqsQueue();
     this.createLambdaFunctions();
     this.setupS3Permissions();
+    this.setupSqsQueuePermissions();
     this.setupS3EventNotifications();
     this.createApiGateway();
     this.setupApiEndpoints();
@@ -40,6 +44,15 @@ export class ImportServiceStack extends cdk.Stack {
       this,
       "ImportBucket",
       "import-service-bucket-fdrh6bfdj7klv"
+    );
+  }
+
+  private setupSqsQueue(): void {
+    // Reference existing SQS queue from Product Service
+    this.catalogItemsQueue = sqs.Queue.fromQueueArn(
+      this,
+      "CatalogItemsQueue",
+      `arn:aws:sqs:${this.region}:${this.account}:catalogItemsQueue`
     );
   }
 
@@ -74,6 +87,7 @@ export class ImportServiceStack extends cdk.Stack {
         environment: {
           REGION: this.region,
           BUCKET_NAME: this.importBucket.bucketName,
+          SQS_URL: this.catalogItemsQueue.queueUrl,
         },
         layers: [this.sharedLayer],
         timeout: cdk.Duration.seconds(30),
@@ -89,6 +103,10 @@ export class ImportServiceStack extends cdk.Stack {
       ),
       layers: [this.sharedLayer],
     });
+  }
+
+  private setupSqsQueuePermissions(): void {
+    this.catalogItemsQueue.grantSendMessages(this.importFileParserLambda);
   }
 
   private setupS3Permissions(): void {
