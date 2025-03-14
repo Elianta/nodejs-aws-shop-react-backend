@@ -5,11 +5,13 @@ import {
   CopyObjectCommand,
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
+import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { Readable, Transform } from "stream";
 import * as csv from "csv-parser";
 import { pipeline } from "stream/promises";
 
 const s3Client = new S3Client({ region: process.env.REGION });
+const sqsClient = new SQSClient({ region: process.env.REGION });
 
 export const handler: S3Handler = async (event: S3Event) => {
   console.log(
@@ -31,14 +33,12 @@ export const handler: S3Handler = async (event: S3Event) => {
       console.log(`Processing file: ${key} from bucket: ${bucket}`);
 
       // Get the file from S3
-      const getObjectParams = {
+      const getObjectCommand = new GetObjectCommand({
         Bucket: bucket,
         Key: key,
-      };
+      });
 
-      const { Body } = await s3Client.send(
-        new GetObjectCommand(getObjectParams)
-      );
+      const { Body } = await s3Client.send(getObjectCommand);
 
       if (!Body) {
         throw new Error(`Failed to get object body for ${key}`);
@@ -46,18 +46,32 @@ export const handler: S3Handler = async (event: S3Event) => {
 
       const stream = Body as Readable;
 
-      // Create a transform stream to log records
-      const logTransform = new Transform({
+      const sqsTransform = new Transform({
         objectMode: true,
-        transform(chunk, encoding, callback) {
-          console.log("Parsed CSV record:", JSON.stringify(chunk));
-          // Pass the chunk through unchanged
-          callback(null, chunk);
+        transform: async (chunk, _, callback) => {
+          try {
+            await sqsClient.send(
+              new SendMessageCommand({
+                QueueUrl: process.env.SQS_URL,
+                MessageBody: JSON.stringify(chunk),
+                MessageAttributes: {
+                  fileName: {
+                    DataType: "String",
+                    StringValue: key,
+                  },
+                },
+              })
+            );
+            callback(null, chunk);
+          } catch (error) {
+            console.error("Error sending message to SQS:", error);
+            callback(error as Error);
+          }
         },
       });
 
       // Process the CSV file using pipeline
-      await pipeline(stream, csv(), logTransform);
+      await pipeline(stream, csv(), sqsTransform);
 
       console.log(`Finished processing ${key}`);
 
