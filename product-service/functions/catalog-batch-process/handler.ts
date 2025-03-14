@@ -6,7 +6,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { v4 as uuidv4 } from "uuid";
 import { ProductWithStock } from "/opt/nodejs/types";
-import { AppError } from "../../lib/utils/error-handler";
+import { AppError } from "/opt/nodejs/utils/error-handler";
 
 const client = new DynamoDBClient({ region: process.env.REGION });
 const docClient = DynamoDBDocumentClient.from(client);
