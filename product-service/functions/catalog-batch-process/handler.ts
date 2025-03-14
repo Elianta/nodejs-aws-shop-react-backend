@@ -8,6 +8,12 @@ import { v4 as uuidv4 } from "uuid";
 import { ProductWithStock } from "/opt/nodejs/types";
 import { AppError } from "/opt/nodejs/utils/error-handler";
 
+interface ValidationResult {
+  isValid: boolean;
+  validatedProduct?: Omit<ProductWithStock, "id">;
+  error?: string;
+}
+
 const client = new DynamoDBClient({ region: process.env.REGION });
 const docClient = DynamoDBDocumentClient.from(client);
 
@@ -19,15 +25,16 @@ export const handler: SQSHandler = async (event) => {
 
   try {
     for (const record of event.Records) {
-      let product: Omit<ProductWithStock, "id">;
+      let rawProduct: Omit<ProductWithStock, "id">;
       try {
-        product = JSON.parse(record.body) as Omit<ProductWithStock, "id">;
+        rawProduct = JSON.parse(record.body) as Omit<ProductWithStock, "id">;
+        const validationResult = validateProduct(rawProduct);
 
-        //TODO: implement validation
-        if (!product.title || !product.price || !product.count) {
-          throw new AppError("Invalid product data: missing required fields");
+        if (!validationResult.isValid || !validationResult.validatedProduct) {
+          throw new AppError(validationResult.error || "Invalid product data");
         }
 
+        const product = validationResult.validatedProduct;
         const productId = uuidv4();
 
         const command = new TransactWriteCommand({
@@ -50,7 +57,6 @@ export const handler: SQSHandler = async (event) => {
                   description: product.description,
                   price: product.price,
                 },
-                ConditionExpression: "attribute_not_exists(id)",
               },
             },
             {
@@ -60,7 +66,6 @@ export const handler: SQSHandler = async (event) => {
                   product_id: productId,
                   count: product.count,
                 },
-                ConditionExpression: "attribute_not_exists(product_id)",
               },
             },
           ],
@@ -78,3 +83,57 @@ export const handler: SQSHandler = async (event) => {
     throw appError;
   }
 };
+
+function validateProduct(product: any): ValidationResult {
+  try {
+    if (typeof product.title !== "string" || !product.title.trim()) {
+      return {
+        isValid: false,
+        error: "Invalid product data: title must be a non-empty string",
+      };
+    }
+
+    const price = Number(product.price);
+    if (isNaN(price) || price <= 0) {
+      return {
+        isValid: false,
+        error: "Invalid product data: price must be a positive number",
+      };
+    }
+
+    const count = Number(product.count);
+    if (isNaN(count) || count <= 0) {
+      return {
+        isValid: false,
+        error: "Invalid product data: count must be a positive number",
+      };
+    }
+
+    if (
+      product.description !== undefined &&
+      typeof product.description !== "string"
+    ) {
+      return {
+        isValid: false,
+        error: "Invalid product data: description must be a string",
+      };
+    }
+
+    const validatedProduct: Omit<ProductWithStock, "id"> = {
+      title: product.title.trim(),
+      price: price,
+      count: count,
+      description: product.description,
+    };
+
+    return {
+      isValid: true,
+      validatedProduct,
+    };
+  } catch (error) {
+    return {
+      isValid: false,
+      error: "Invalid product data: unexpected error during validation",
+    };
+  }
+}
