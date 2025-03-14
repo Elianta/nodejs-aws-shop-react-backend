@@ -12,12 +12,14 @@ interface LambdaConfig extends BaseLambdaConfig {
   permissions: {
     productsTable: "read" | "write" | "both";
     stocksTable: "read" | "write" | "both";
+    productTitlesTable: "read" | "write" | "both";
   };
 }
 
 export class ProductServiceStack extends cdk.Stack {
   private productsTable: dynamodb.ITable;
   private stocksTable: dynamodb.ITable;
+  private productTitlesTable: dynamodb.ITable;
   private sharedLayer: lambda.LayerVersion;
   private lambdaEnv: Record<string, string>;
   private api: apigateway.RestApi;
@@ -55,6 +57,12 @@ export class ProductServiceStack extends cdk.Stack {
         "StocksTable",
         "stocks"
       );
+
+      this.productTitlesTable = dynamodb.Table.fromTableName(
+        this,
+        "ProductTitles",
+        "product-titles"
+      );
     } catch (error) {
       throw AppError.from(error, "Failed to initialize DynamoDB tables");
     }
@@ -78,6 +86,7 @@ export class ProductServiceStack extends cdk.Stack {
       this.lambdaEnv = {
         PRODUCTS_TABLE_NAME: this.productsTable.tableName,
         STOCKS_TABLE_NAME: this.stocksTable.tableName,
+        PRODUCT_TITLES_TABLE_NAME: this.productTitlesTable.tableName,
         REGION: cdk.Stack.of(this).region,
       };
     } catch (error) {
@@ -127,6 +136,7 @@ export class ProductServiceStack extends cdk.Stack {
       catalogBatchBuilder
         .addTablePermissions(this.productsTable, "write")
         .addTablePermissions(this.stocksTable, "write")
+        .addTablePermissions(this.productTitlesTable, "write")
         .addEventSource(this.catalogItemsQueue, 5)
         .build();
     } catch (error) {
@@ -155,6 +165,10 @@ export class ProductServiceStack extends cdk.Stack {
           config.permissions.productsTable
         )
         .addTablePermissions(this.stocksTable, config.permissions.stocksTable)
+        .addTablePermissions(
+          this.productTitlesTable,
+          config.permissions.productTitlesTable
+        )
         .build();
     } catch (error) {
       throw AppError.from(
@@ -172,6 +186,7 @@ export class ProductServiceStack extends cdk.Stack {
         permissions: {
           productsTable: "read",
           stocksTable: "read",
+          productTitlesTable: "read",
         },
       });
 
@@ -181,6 +196,7 @@ export class ProductServiceStack extends cdk.Stack {
         permissions: {
           productsTable: "read",
           stocksTable: "read",
+          productTitlesTable: "read",
         },
       });
 
@@ -190,6 +206,7 @@ export class ProductServiceStack extends cdk.Stack {
         permissions: {
           productsTable: "write",
           stocksTable: "write",
+          productTitlesTable: "write",
         },
       });
 

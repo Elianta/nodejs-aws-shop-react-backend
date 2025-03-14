@@ -3,6 +3,7 @@ import { products } from "./products";
 // Constants
 export const TEST_PRODUCTS_TABLE = "test-products-table";
 export const TEST_STOCKS_TABLE = "test-stocks-table";
+export const TEST_PRODUCT_TITLES_TABLE = "test-product-titles-table";
 
 // Mock control flag
 let shouldThrowError = false;
@@ -36,6 +37,15 @@ export const setupDynamoDBMock = () => {
                 }));
                 return Promise.resolve({
                   Items: mockStocks,
+                });
+              } else if (
+                command.input.TableName === TEST_PRODUCT_TITLES_TABLE
+              ) {
+                const mockProductTitles = products.map((product) => ({
+                  title: product.title,
+                }));
+                return Promise.resolve({
+                  Items: mockProductTitles,
                 });
               }
             }

@@ -4,6 +4,7 @@ import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as lambdaEventSources from "aws-cdk-lib/aws-lambda-event-sources";
 import { Construct } from "constructs";
 import { AppError } from "../../layers/nodejs/utils/error-handler";
+import { Duration } from "aws-cdk-lib";
 
 export interface BaseLambdaConfig {
   id: string;
@@ -50,10 +51,17 @@ export class LambdaFunctionBuilder {
     }
   }
 
-  addEventSource(queue: sqs.Queue, batchSize: number): this {
+  addEventSource(
+    queue: sqs.Queue,
+    batchSize: number,
+    maxBatchingWindowInSeconds?: number
+  ): this {
     try {
       this.function.addEventSource(
-        new lambdaEventSources.SqsEventSource(queue, { batchSize })
+        new lambdaEventSources.SqsEventSource(queue, {
+          batchSize,
+          maxBatchingWindow: Duration.seconds(maxBatchingWindowInSeconds || 10),
+        })
       );
       return this;
     } catch (error) {

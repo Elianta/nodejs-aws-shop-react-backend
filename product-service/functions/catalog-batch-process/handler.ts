@@ -19,41 +19,58 @@ export const handler: SQSHandler = async (event) => {
 
   try {
     for (const record of event.Records) {
-      const product = JSON.parse(record.body) as Omit<ProductWithStock, "id">;
-      const productId = uuidv4();
+      let product: Omit<ProductWithStock, "id">;
+      try {
+        product = JSON.parse(record.body) as Omit<ProductWithStock, "id">;
 
-      //TODO: implement validation
-      if (!product.title || !product.price || !product.count) {
-        throw new AppError("Invalid product data: missing required fields");
+        //TODO: implement validation
+        if (!product.title || !product.price || !product.count) {
+          throw new AppError("Invalid product data: missing required fields");
+        }
+
+        const productId = uuidv4();
+
+        const command = new TransactWriteCommand({
+          TransactItems: [
+            {
+              Put: {
+                TableName: process.env.PRODUCT_TITLES_TABLE_NAME!,
+                Item: {
+                  title: product.title,
+                },
+                ConditionExpression: "attribute_not_exists(title)",
+              },
+            },
+            {
+              Put: {
+                TableName: process.env.PRODUCTS_TABLE_NAME!,
+                Item: {
+                  id: productId,
+                  title: product.title,
+                  description: product.description,
+                  price: product.price,
+                },
+                ConditionExpression: "attribute_not_exists(id)",
+              },
+            },
+            {
+              Put: {
+                TableName: process.env.STOCKS_TABLE_NAME!,
+                Item: {
+                  product_id: productId,
+                  count: product.count,
+                },
+                ConditionExpression: "attribute_not_exists(product_id)",
+              },
+            },
+          ],
+        });
+
+        await docClient.send(command);
+        console.log(`Product created successfully: ${productId}`);
+      } catch (error) {
+        throw error; // Re-throw other errors to be caught by outer try-catch
       }
-
-      const command = new TransactWriteCommand({
-        TransactItems: [
-          {
-            Put: {
-              TableName: process.env.PRODUCTS_TABLE!,
-              Item: {
-                id: productId,
-                title: product.title,
-                description: product.description,
-                price: product.price,
-              },
-            },
-          },
-          {
-            Put: {
-              TableName: process.env.STOCKS_TABLE!,
-              Item: {
-                product_id: productId,
-                count: product.count,
-              },
-            },
-          },
-        ],
-      });
-
-      await docClient.send(command);
-      console.log(`Product created successfully: ${productId}`);
     }
   } catch (error) {
     const appError = AppError.from(error, "Error processing batch");

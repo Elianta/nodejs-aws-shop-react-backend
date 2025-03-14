@@ -3,6 +3,7 @@ import { ProductWithStock } from "/opt/nodejs/types";
 import {
   TEST_PRODUCTS_TABLE,
   TEST_STOCKS_TABLE,
+  TEST_PRODUCT_TITLES_TABLE,
   setupDynamoDBMock,
 } from "../../../mocks/dynamodb";
 import { setupUuidMock, TEST_UUID } from "../../../mocks/uuid";
@@ -57,8 +58,9 @@ describe("catalogBatchProcess Lambda", () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    process.env.PRODUCTS_TABLE = TEST_PRODUCTS_TABLE;
-    process.env.STOCKS_TABLE = TEST_STOCKS_TABLE;
+    process.env.PRODUCTS_TABLE_NAME = TEST_PRODUCTS_TABLE;
+    process.env.STOCKS_TABLE_NAME = TEST_STOCKS_TABLE;
+    process.env.PRODUCT_TITLES_TABLE_NAME = TEST_PRODUCT_TITLES_TABLE;
 
     testEnv = setupTestEnvironment();
 
@@ -87,6 +89,15 @@ describe("catalogBatchProcess Lambda", () => {
     const { mocks } = testEnv;
     expect(mocks.commands.TransactWriteCommand).toHaveBeenCalledWith({
       TransactItems: [
+        {
+          Put: {
+            TableName: TEST_PRODUCT_TITLES_TABLE,
+            Item: {
+              title: testProductsData[0].title,
+            },
+            ConditionExpression: "attribute_not_exists(title)",
+          },
+        },
         {
           Put: {
             TableName: TEST_PRODUCTS_TABLE,
