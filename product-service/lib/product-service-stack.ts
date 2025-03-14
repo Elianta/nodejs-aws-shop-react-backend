@@ -4,10 +4,11 @@ import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import { Construct } from "constructs";
 import * as path from "path";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as sqs from "aws-cdk-lib/aws-sqs";
+import { BaseLambdaConfig, LambdaFunctionBuilder } from "./builders";
+import { AppError } from "./utils/error-handler";
 
-interface LambdaConfig {
-  id: string;
-  handlerPath: string;
+interface LambdaConfig extends BaseLambdaConfig {
   permissions: {
     productsTable: "read" | "write" | "both";
     stocksTable: "read" | "write" | "both";
@@ -20,6 +21,7 @@ export class ProductServiceStack extends cdk.Stack {
   private sharedLayer: lambda.LayerVersion;
   private lambdaEnv: Record<string, string>;
   private api: apigateway.RestApi;
+  private catalogItemsQueue: sqs.Queue;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -31,6 +33,7 @@ export class ProductServiceStack extends cdk.Stack {
 
     const lambdaFunctions = this.createLambdaFunctions();
     this.setupApiEndpoints(lambdaFunctions);
+      this.createCatalogProcessing();
     this.createOutputs();
   }
 
@@ -76,8 +79,47 @@ export class ProductServiceStack extends cdk.Stack {
     });
   }
 
+  private createCatalogProcessing(): void {
+    try {
+      this.catalogItemsQueue = new sqs.Queue(this, "CatalogItemsQueue", {
+        queueName: "catalogItemsQueue",
+      });
+
+      const catalogBatchBuilder = new LambdaFunctionBuilder(
+        this,
+        {
+          id: "CatalogBatchProcessLambda",
+          handlerPath: "catalog-batch-process",
+        },
+        {
+          runtime: lambda.Runtime.NODEJS_20_X,
+          handler: "handler.handler",
+          code: lambda.Code.fromAsset(
+            path.join(__dirname, "../dist/functions/catalog-batch-process")
+          ),
+          environment: {
+            ...this.lambdaEnv,
+          },
+          layers: [this.sharedLayer],
+        }
+      );
+
+      catalogBatchBuilder
+        .addTablePermissions(this.productsTable, "write")
+        .addTablePermissions(this.stocksTable, "write")
+        .addEventSource(this.catalogItemsQueue, 5)
+        .build();
+    } catch (error) {
+      throw AppError.from(
+        error,
+        "Failed to create catalog processing resources"
+      );
+    }
+  }
+
   private createLambdaFunction(config: LambdaConfig): lambda.Function {
-    const lambdaFunction = new lambda.Function(this, config.id, {
+    try {
+      const builder = new LambdaFunctionBuilder(this, config, {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "handler.handler",
       code: lambda.Code.fromAsset(
@@ -87,33 +129,19 @@ export class ProductServiceStack extends cdk.Stack {
       environment: this.lambdaEnv,
     });
 
-    // Grant permissions based on configuration
-    if (
-      config.permissions.productsTable === "read" ||
-      config.permissions.productsTable === "both"
-    ) {
-      this.productsTable.grantReadData(lambdaFunction);
+      return builder
+        .addTablePermissions(
+          this.productsTable,
+          config.permissions.productsTable
+        )
+        .addTablePermissions(this.stocksTable, config.permissions.stocksTable)
+        .build();
+    } catch (error) {
+      throw AppError.from(
+        error,
+        `Failed to create Lambda function ${config.id}`
+      );
     }
-    if (
-      config.permissions.productsTable === "write" ||
-      config.permissions.productsTable === "both"
-    ) {
-      this.productsTable.grantWriteData(lambdaFunction);
-    }
-    if (
-      config.permissions.stocksTable === "read" ||
-      config.permissions.stocksTable === "both"
-    ) {
-      this.stocksTable.grantReadData(lambdaFunction);
-    }
-    if (
-      config.permissions.stocksTable === "write" ||
-      config.permissions.stocksTable === "both"
-    ) {
-      this.stocksTable.grantWriteData(lambdaFunction);
-    }
-
-    return lambdaFunction;
   }
 
   private createLambdaFunctions(): Record<string, lambda.Function> {
@@ -144,14 +172,21 @@ export class ProductServiceStack extends cdk.Stack {
       },
     });
 
-    const swaggerUi = new lambda.Function(this, "SwaggerUI", {
+      const swaggerUi = new LambdaFunctionBuilder(
+        this,
+        {
+          id: "SwaggerUI",
+          handlerPath: "swagger-ui",
+        },
+        {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "handler.handler",
       code: lambda.Code.fromAsset(
         path.join(__dirname, "../dist/functions/swagger-ui")
       ),
       layers: [this.sharedLayer],
-    });
+        }
+      ).build();
 
     return {
       getProductsList,
