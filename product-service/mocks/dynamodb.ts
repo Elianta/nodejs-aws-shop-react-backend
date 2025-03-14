@@ -24,7 +24,7 @@ export const setupDynamoDBMock = () => {
             }
 
             // Handle ScanCommand (for get-products-list)
-            if (command instanceof originalModule.ScanCommand) {
+            if (command.constructor.name === "ScanCommand") {
               if (command.input.TableName === TEST_PRODUCTS_TABLE) {
                 return Promise.resolve({
                   Items: products,
@@ -41,7 +41,7 @@ export const setupDynamoDBMock = () => {
             }
 
             // Handle GetCommand (for get-product-by-id)
-            if (command instanceof originalModule.GetCommand) {
+            if (command.constructor.name === "GetCommand") {
               if (command.input.TableName === TEST_PRODUCTS_TABLE) {
                 const productId = command.input.Key.id;
                 const product = products.find((p) => p.id === productId);
@@ -68,7 +68,7 @@ export const setupDynamoDBMock = () => {
             }
 
             // Handle TransactWriteCommand (for create-product)
-            if (command instanceof originalModule.TransactWriteCommand) {
+            if (command.constructor.name === "TransactWriteCommand") {
               return Promise.resolve({});
             }
 
@@ -76,9 +76,18 @@ export const setupDynamoDBMock = () => {
           }),
         }),
       },
-      ScanCommand: originalModule.ScanCommand,
-      GetCommand: originalModule.GetCommand,
-      TransactWriteCommand: originalModule.TransactWriteCommand,
+      ScanCommand: jest.fn().mockImplementation((params) => ({
+        input: params,
+        constructor: { name: "ScanCommand" },
+      })),
+      GetCommand: jest.fn().mockImplementation((params) => ({
+        input: params,
+        constructor: { name: "GetCommand" },
+      })),
+      TransactWriteCommand: jest.fn().mockImplementation((params) => ({
+        input: params,
+        constructor: { name: "TransactWriteCommand" },
+      })),
     };
   });
 };
