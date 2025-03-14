@@ -90,4 +90,10 @@ export const setupDynamoDBMock = () => {
       })),
     };
   });
+
+  jest.mock("@aws-sdk/client-dynamodb", () => ({
+    DynamoDBClient: jest.fn().mockImplementation(() => ({
+      send: jest.fn(),
+    })),
+  }));
 };
