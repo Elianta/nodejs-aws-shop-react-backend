@@ -3,7 +3,7 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as lambdaEventSources from "aws-cdk-lib/aws-lambda-event-sources";
 import { Construct } from "constructs";
-import { AppError } from "../utils/error-handler";
+import { AppError } from "../../layers/nodejs/utils/error-handler";
 
 export interface BaseLambdaConfig {
   id: string;

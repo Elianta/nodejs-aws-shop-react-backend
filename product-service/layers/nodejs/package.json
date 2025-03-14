@@ -1,6 +1,9 @@
 {
   "name": "lambda-layers",
   "version": "1.0.0",
+    "files": [
+    "utils/*"
+  ],
   "dependencies": {
     "js-yaml": "^4.1.0",
     "uuid": "^11.1.0"

@@ -6,7 +6,7 @@ import * as path from "path";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import { BaseLambdaConfig, LambdaFunctionBuilder } from "./builders";
-import { AppError } from "./utils/error-handler";
+import { AppError } from "../layers/nodejs/utils/error-handler";
 
 interface LambdaConfig extends BaseLambdaConfig {
   permissions: {

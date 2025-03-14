@@ -6,12 +6,36 @@ const rootDir = path.join(__dirname, "..");
 const distDir = path.join(rootDir, "dist");
 const layerSrcDir = path.join(rootDir, "layers/nodejs");
 const layerDistDir = path.join(distDir, "layers/nodejs");
+const utilsSrcDir = path.join(layerSrcDir, "utils");
+const utilsDistDir = path.join(layerDistDir, "utils");
 const swaggerUiSrcDir = path.join(rootDir, "functions/swagger-ui");
 const swaggerUiDistDir = path.join(distDir, "functions/swagger-ui");
 const docsDir = path.join(rootDir, "docs");
 
+// Function to copy directory recursively
+function copyDirRecursive(src: string, dest: string) {
+  if (!fs.existsSync(dest)) {
+    fs.mkdirSync(dest, { recursive: true });
+  }
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+
+    if (entry.isDirectory()) {
+      copyDirRecursive(srcPath, destPath);
+    } else {
+      // Only copy .js files
+      if (entry.name.endsWith(".js")) {
+        fs.copyFileSync(srcPath, destPath);
+      }
+    }
+  }
+}
+
 // Create dist directories
-[distDir, layerDistDir, swaggerUiDistDir].forEach((dir) => {
+[distDir, layerDistDir, swaggerUiDistDir, utilsDistDir].forEach((dir) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -49,4 +73,9 @@ if (fs.existsSync(path.join(docsDir, "swagger.yaml"))) {
     path.join(swaggerUiDistDir, "swagger.yaml")
   );
 }
+
+// Copy utils directory
+console.log(">> Copying utils files...");
+copyDirRecursive(utilsSrcDir, utilsDistDir);
+
 console.log(">> \u{2705} Build completed successfully!");
