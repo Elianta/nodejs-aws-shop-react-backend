@@ -23,20 +23,23 @@ export const handler: SQSHandler = async (event) => {
     JSON.stringify(event)
   );
 
-  try {
+  const failedMessageIds: string[] = [];
+
     for (const record of event.Records) {
-      let rawProduct: Omit<ProductWithStock, "id">;
       try {
+      let rawProduct: Omit<ProductWithStock, "id"> | null = null;
         rawProduct = JSON.parse(record.body) as Omit<ProductWithStock, "id">;
         const validationResult = validateProduct(rawProduct);
 
         if (!validationResult.isValid || !validationResult.validatedProduct) {
-          throw new AppError(validationResult.error || "Invalid product data");
+        console.log(validationResult.error || "Invalid product data");
+        continue;
         }
 
         const product = validationResult.validatedProduct;
         const productId = uuidv4();
 
+      try {
         const command = new TransactWriteCommand({
           TransactItems: [
             {
@@ -73,15 +76,28 @@ export const handler: SQSHandler = async (event) => {
 
         await docClient.send(command);
         console.log(`Product created successfully: ${productId}`);
-      } catch (error) {
+      } catch (error: any) {
+        // Check if error is due to ConditionExpression - don't retry
+        if (
+          error.name === "TransactionCanceledException" &&
+          error.CancellationReasons?.some(
+            (reason: any) => reason.Code === "ConditionalCheckFailed"
+          )
+        ) {
+          console.log(`Product ${rawProduct?.title} already exists - skipping`);
+          continue;
+        }
         throw error; // Re-throw other errors to be caught by outer try-catch
-      }
     }
   } catch (error) {
     const appError = AppError.from(error, "Error processing batch");
     console.error(appError);
-    throw appError;
+      failedMessageIds.push(record.messageId);
+    }
   }
+  return {
+    batchItemFailures: failedMessageIds.map((id) => ({ itemIdentifier: id })),
+  };
 };
 
 function validateProduct(product: any): ValidationResult {

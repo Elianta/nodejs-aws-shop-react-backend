@@ -112,6 +112,7 @@ export class ProductServiceStack extends cdk.Stack {
     try {
       this.catalogItemsQueue = new sqs.Queue(this, "CatalogItemsQueue", {
         queueName: "catalogItemsQueue",
+        retentionPeriod: cdk.Duration.days(1),
       });
 
       const catalogBatchBuilder = new LambdaFunctionBuilder(
@@ -137,7 +138,10 @@ export class ProductServiceStack extends cdk.Stack {
         .addTablePermissions(this.productsTable, "write")
         .addTablePermissions(this.stocksTable, "write")
         .addTablePermissions(this.productTitlesTable, "write")
-        .addEventSource(this.catalogItemsQueue, 5)
+        .addEventSource(this.catalogItemsQueue, {
+          batchSize: 5,
+          reportBatchItemFailures: true,
+        })
         .build();
     } catch (error) {
       throw AppError.from(
