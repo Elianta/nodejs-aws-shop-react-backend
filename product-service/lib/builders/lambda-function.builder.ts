@@ -53,14 +53,15 @@ export class LambdaFunctionBuilder {
 
   addEventSource(
     queue: sqs.Queue,
-    batchSize: number,
-    maxBatchingWindowInSeconds?: number
+    config: lambdaEventSources.SqsEventSourceProps = {}
   ): this {
+    const { batchSize, maxBatchingWindow, reportBatchItemFailures } = config;
     try {
       this.function.addEventSource(
         new lambdaEventSources.SqsEventSource(queue, {
           batchSize,
-          maxBatchingWindow: Duration.seconds(maxBatchingWindowInSeconds || 10),
+          maxBatchingWindow: maxBatchingWindow || Duration.seconds(10),
+          reportBatchItemFailures,
         })
       );
       return this;
