@@ -1,104 +1,55 @@
 import { S3Event } from "aws-lambda";
-import { Readable, Transform } from "stream";
-import { pipeline } from "stream/promises";
-import {
-  S3Client,
-  GetObjectCommand,
-  CopyObjectCommand,
-  DeleteObjectCommand,
-} from "@aws-sdk/client-s3";
+import { setupClientS3Mock } from "../../../mocks/client-s3";
+import { setupClientSqsMock } from "../../../mocks/client-sqs";
+import { setupCsvParserMock } from "../../../mocks/csv-parser";
 
 const TEST_REGION = "us-east-1";
 const TEST_BUCKET_NAME = "test-bucket";
+const TEST_SQS_URL = "https://sqs.test.url";
 
-jest.mock("@aws-sdk/client-s3", () => {
-  const originalModule = jest.requireActual("@aws-sdk/client-s3");
-  const mockReadableStream = new Readable({
-    read() {
-      this.push("id,name,price\n");
-      this.push("1,Test Product,99.99\n");
-      this.push(null);
+const setupTestEnvironment = () => {
+  // Setup all mocks
+  setupClientS3Mock();
+  setupClientSqsMock();
+  setupCsvParserMock();
+
+  // Get all mocked modules
+  const { S3Client, GetObjectCommand, CopyObjectCommand, DeleteObjectCommand } =
+    jest.requireMock("@aws-sdk/client-s3");
+  const { SQSClient, SendMessageCommand } = jest.requireMock(
+    "@aws-sdk/client-sqs"
+  );
+  const { handler } = require("../handler");
+
+  // Create mock instances
+  const s3ClientMock = S3Client();
+  const sqsClientMock = SQSClient();
+
+  return {
+    handler,
+    mocks: {
+      s3ClientMock,
+      sqsClientMock,
+      commands: {
+        GetObjectCommand,
+        CopyObjectCommand,
+        DeleteObjectCommand,
+        SendMessageCommand,
+      },
     },
-  });
-
-  const mockSend = jest.fn().mockImplementation((command) => {
-    if (command.constructor.name === "GetObjectCommand") {
-      return Promise.resolve({
-        Body: mockReadableStream,
-      });
-    }
-    return Promise.resolve({});
-  });
-
-  return {
-    ...originalModule,
-    S3Client: jest.fn(() => ({
-      send: mockSend,
-    })),
-    GetObjectCommand: jest.fn().mockImplementation((params) => ({
-      input: params,
-      constructor: { name: "GetObjectCommand" },
-    })),
-    CopyObjectCommand: jest.fn().mockImplementation((params) => ({
-      input: params,
-      constructor: { name: "CopyObjectCommand" },
-    })),
-    DeleteObjectCommand: jest.fn().mockImplementation((params) => ({
-      input: params,
-      constructor: { name: "DeleteObjectCommand" },
-    })),
   };
-});
-
-// Mock the csv-parser and stream/promises
-jest.mock("csv-parser", () => {
-  return jest.fn().mockImplementation(() => {
-    const csvTransform = new Transform({
-      objectMode: true,
-      transform(chunk, encoding, callback) {
-        callback(null, { id: "1", name: "Test Product", price: "99.99" });
-      },
-    });
-    return csvTransform;
-  });
-});
-
-jest.mock("stream/promises", () => {
-  return {
-    pipeline: jest.fn().mockResolvedValue(undefined),
-  };
-});
-
-import { handler } from "../handler";
-
-const invokeHandler = async (fileNames: string[]) => {
-  const mockEvent = {
-    Records: fileNames.map((fileName) => ({
-      s3: {
-        bucket: {
-          name: TEST_BUCKET_NAME,
-        },
-        object: {
-          key: fileName,
-        },
-      },
-    })),
-  } as S3Event;
-
-  return await handler(mockEvent, {} as any, () => {});
 };
 
 describe("import-file-parser Lambda", () => {
   const originalEnv = process.env;
-  let s3ClientMock: any;
+  let testEnv: ReturnType<typeof setupTestEnvironment>;
 
   beforeEach(() => {
-    // Set environment variables for tests
+    jest.clearAllMocks();
     process.env.REGION = TEST_REGION;
+    process.env.SQS_URL = TEST_SQS_URL;
 
-    // Create a new instance of the S3Client before each test
-    // This ensures we have access to the mock even if the handler doesn't use it
-    s3ClientMock = new S3Client({});
+    testEnv = setupTestEnvironment();
 
     // Clear console mocks between tests
     jest.spyOn(console, "log").mockImplementation(() => {});
@@ -106,56 +57,119 @@ describe("import-file-parser Lambda", () => {
   });
 
   afterEach(() => {
-    // Restore original environment variables
     process.env = { ...originalEnv };
-    // Clear all mocks
-    jest.clearAllMocks();
+    jest.resetModules();
   });
+
+  const invokeHandler = async (fileNames: string[]) => {
+    const mockEvent = {
+      Records: fileNames.map((fileName) => ({
+        s3: {
+          bucket: {
+            name: TEST_BUCKET_NAME,
+          },
+          object: {
+            key: fileName,
+          },
+        },
+      })),
+    } as S3Event;
+
+    return await testEnv.handler(mockEvent, {} as any, () => {});
+  };
 
   it("should process S3 events and handle CSV files correctly", async () => {
     const fileName = "test-file.csv";
     await invokeHandler([`uploaded/${fileName}`]);
 
+    const { mocks } = testEnv;
+
     // Verify S3 operations were called correctly
     // 3 operations per file: GetObject, CopyObject, DeleteObject
-    expect(s3ClientMock.send).toHaveBeenCalledTimes(3);
+    expect(mocks.s3ClientMock.send).toHaveBeenCalledTimes(3);
 
-    expect(GetObjectCommand).toHaveBeenCalledWith({
+    expect(mocks.commands.GetObjectCommand).toHaveBeenCalledWith({
       Bucket: TEST_BUCKET_NAME,
       Key: `uploaded/${fileName}`,
     });
 
-    expect(CopyObjectCommand).toHaveBeenCalledWith({
+    expect(mocks.commands.CopyObjectCommand).toHaveBeenCalledWith({
       Bucket: TEST_BUCKET_NAME,
       CopySource: `${TEST_BUCKET_NAME}/uploaded/${fileName}`,
       Key: `parsed/${fileName}`,
     });
 
-    expect(DeleteObjectCommand).toHaveBeenCalledWith({
+    expect(mocks.commands.DeleteObjectCommand).toHaveBeenCalledWith({
       Bucket: TEST_BUCKET_NAME,
       Key: `uploaded/${fileName}`,
     });
+  });
 
-    expect(pipeline).toHaveBeenCalled();
+  it("should process S3 events and send messages to SQS", async () => {
+    const fileName = "test-file.csv";
+    await invokeHandler([`uploaded/${fileName}`]);
+
+    const { mocks } = testEnv;
+
+    expect(mocks.s3ClientMock.send).toHaveBeenCalledTimes(3);
+
+    expect(mocks.sqsClientMock.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: {
+          QueueUrl: TEST_SQS_URL,
+          MessageBody: expect.any(String),
+          MessageAttributes: {
+            fileName: {
+              DataType: "String",
+              StringValue: `uploaded/${fileName}`,
+            },
+          },
+        },
+        constructor: {
+          name: "SendMessageCommand",
+        },
+      })
+    );
+
+    expect(mocks.commands.SendMessageCommand).toHaveBeenCalledWith({
+      QueueUrl: TEST_SQS_URL,
+      MessageBody: JSON.stringify({
+        id: "1",
+        name: "Test Product",
+        price: "99.99",
+      }),
+      MessageAttributes: {
+        fileName: {
+          DataType: "String",
+          StringValue: `uploaded/${fileName}`,
+        },
+      },
+    });
   });
 
   it("should skip files not in the 'uploaded' folder", async () => {
     await invokeHandler(["other-folder/test-file.csv"]);
 
-    expect(s3ClientMock.send).not.toHaveBeenCalled();
-    expect(GetObjectCommand).not.toHaveBeenCalled();
-    expect(CopyObjectCommand).not.toHaveBeenCalled();
-    expect(DeleteObjectCommand).not.toHaveBeenCalled();
+    const { mocks } = testEnv;
+
+    expect(mocks.s3ClientMock.send).not.toHaveBeenCalled();
+    expect(mocks.commands.GetObjectCommand).not.toHaveBeenCalled();
+    expect(mocks.commands.CopyObjectCommand).not.toHaveBeenCalled();
+    expect(mocks.commands.DeleteObjectCommand).not.toHaveBeenCalled();
+    expect(mocks.sqsClientMock.send).not.toHaveBeenCalled();
+    expect(mocks.commands.SendMessageCommand).not.toHaveBeenCalled();
   });
 
   it("should handle multiple records in the event", async () => {
     await invokeHandler(["uploaded/test-file1.csv", "uploaded/test-file2.csv"]);
 
-    expect(s3ClientMock.send).toHaveBeenCalledTimes(6);
+    const { mocks } = testEnv;
+    expect(mocks.s3ClientMock.send).toHaveBeenCalledTimes(6);
 
     // Check GetObjectCommand was called for both files
-    const getObjectCalls = (GetObjectCommand as unknown as jest.Mock).mock
-      .calls;
+    const getObjectCalls = (
+      mocks.commands.GetObjectCommand as unknown as jest.Mock
+    ).mock.calls;
     expect(getObjectCalls).toContainEqual([
       {
         Bucket: TEST_BUCKET_NAME,
@@ -170,13 +184,25 @@ describe("import-file-parser Lambda", () => {
     ]);
   });
 
-  it("should handle errors gracefully", async () => {
-    s3ClientMock.send.mockRejectedValueOnce(new Error("S3 operation failed"));
+  it("should handle S3 send errors gracefully", async () => {
+    const { mocks } = testEnv;
+    const errorMsg = "S3 operation failed";
+    mocks.s3ClientMock.send.mockRejectedValueOnce(new Error(errorMsg));
 
     await expect(invokeHandler(["uploaded/test-file.csv"])).rejects.toThrow(
-      "S3 operation failed"
+      errorMsg
     );
+    expect(console.error).toHaveBeenCalled();
+  });
 
+  it("should handle SQS send errors gracefully", async () => {
+    const { mocks } = testEnv;
+    const errorMsg = "SQS error";
+    mocks.sqsClientMock.send.mockRejectedValueOnce(new Error(errorMsg));
+
+    await expect(invokeHandler(["uploaded/test-file.csv"])).rejects.toThrow(
+      errorMsg
+    );
     expect(console.error).toHaveBeenCalled();
   });
 });

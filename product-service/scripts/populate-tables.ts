@@ -46,6 +46,20 @@ const populateTables = async () => {
       );
     }
 
+    // Insert product titles
+    console.log("\nStarting to populate product titles...");
+    for (const product of products) {
+      const titleCommand = new PutCommand({
+        TableName: "product-titles",
+        Item: {
+          title: product.title,
+        },
+      });
+
+      await docClient.send(titleCommand);
+      console.log(`Created product title: ${product.title}`);
+    }
+
     console.log("\nAll data populated successfully!");
 
     console.log(`\nSummary:`);

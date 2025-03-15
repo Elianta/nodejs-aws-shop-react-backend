@@ -36,6 +36,10 @@ describe("createProduct Lambda", () => {
     // Set environment variables for tests
     process.env.PRODUCTS_TABLE_NAME = TEST_PRODUCTS_TABLE;
     process.env.STOCKS_TABLE_NAME = TEST_STOCKS_TABLE;
+
+    // Clear console mocks between tests
+    jest.spyOn(console, "log").mockImplementation(() => {});
+    jest.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
