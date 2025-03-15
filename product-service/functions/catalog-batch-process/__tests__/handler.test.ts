@@ -77,6 +77,7 @@ describe("catalogBatchProcess Lambda", () => {
   const invokeHandler = async (data: any[]) => {
     const event = {
       Records: data.map((item) => ({
+        messageId: "test-message-id",
         body: JSON.stringify(item),
       })),
     } as unknown as SQSEvent;
@@ -132,18 +133,41 @@ describe("catalogBatchProcess Lambda", () => {
     expect(mocks.docClientMock.send).toHaveBeenCalledTimes(2);
   });
 
+  it("should handle invalid product data", async () => {
+    const { mocks } = testEnv;
+    const result = await invokeHandler([{ description: "Test Description" }]);
+
+    expect(result.batchItemFailures).toEqual([]);
+    expect(mocks.docClientMock.send).not.toHaveBeenCalled();
+  });
+
   it("should handle invalid JSON in message body", async () => {
-    await expect(invokeHandler(["invalid-json"])).rejects.toThrow();
+    const result = await invokeHandler(["invalid-json"]);
+
+    expect(result.batchItemFailures).toEqual([]);
   });
 
   it("should handle DynamoDB errors", async () => {
     const { mocks } = testEnv;
     mocks.docClientMock.send.mockRejectedValueOnce(new Error("DynamoDB error"));
 
-    await expect(invokeHandler(testProductsData)).rejects.toThrow(
-      "Error processing batch"
-    );
+    const result = await invokeHandler([testProductsData[0]]);
 
-    expect(console.error).toHaveBeenCalled();
+    expect(result.batchItemFailures).toHaveLength(1);
+    expect(result.batchItemFailures[0].itemIdentifier).toBeDefined();
+  });
+
+  it("should handle product already exists condition", async () => {
+    const { mocks } = testEnv;
+    const conditionalError = {
+      name: "TransactionCanceledException",
+      CancellationReasons: [{ Code: "ConditionalCheckFailed" }],
+    };
+    mocks.docClientMock.send.mockRejectedValueOnce(conditionalError);
+
+    const result = await invokeHandler([testProductsData[0]]);
+
+    // Should not mark as failed
+    expect(result.batchItemFailures).toEqual([]);
   });
 });
