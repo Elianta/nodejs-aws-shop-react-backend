@@ -7,30 +7,39 @@ import {
   setupDynamoDBMock,
 } from "../../../mocks/dynamodb";
 import { setupUuidMock, TEST_UUID } from "../../../mocks/uuid";
+import {
+  TEST_CREATE_PRODUCT_TOPIC_ARN,
+  setupSnsMock,
+} from "../../../mocks/sns";
 
 const setupTestEnvironment = () => {
   // Setup all mocks
   setupDynamoDBMock();
   setupUuidMock();
+  setupSnsMock();
 
   // Get all mocked modules
   const { DynamoDBClient } = jest.requireMock("@aws-sdk/client-dynamodb");
   const { DynamoDBDocumentClient, TransactWriteCommand } = jest.requireMock(
     "@aws-sdk/lib-dynamodb"
   );
+  const { SNSClient, PublishCommand } = jest.requireMock("@aws-sdk/client-sns");
   const { handler } = require("../handler");
 
   // Create mock instances
   const dynamoDBClientMock = DynamoDBClient();
   const docClientMock = DynamoDBDocumentClient.from(dynamoDBClientMock);
+  const snsClientMock = SNSClient();
 
   return {
     handler,
     mocks: {
       dynamoDBClientMock,
       docClientMock,
+      snsClientMock,
       commands: {
         TransactWriteCommand,
+        SNSPublishCommand: PublishCommand,
       },
     },
   };
@@ -61,6 +70,7 @@ describe("catalogBatchProcess Lambda", () => {
     process.env.PRODUCTS_TABLE_NAME = TEST_PRODUCTS_TABLE;
     process.env.STOCKS_TABLE_NAME = TEST_STOCKS_TABLE;
     process.env.PRODUCT_TITLES_TABLE_NAME = TEST_PRODUCT_TITLES_TABLE;
+    process.env.CREATE_PRODUCT_TOPIC_ARN = TEST_CREATE_PRODUCT_TOPIC_ARN;
 
     testEnv = setupTestEnvironment();
 
@@ -125,6 +135,33 @@ describe("catalogBatchProcess Lambda", () => {
     expect(mocks.docClientMock.send).toHaveBeenCalled();
   });
 
+  it("should process valid products and publish to SNS", async () => {
+    await invokeHandler([testProductsData[0]]);
+
+    const { mocks } = testEnv;
+
+    expect(mocks.snsClientMock.send).toHaveBeenCalledTimes(1);
+    expect(mocks.commands.SNSPublishCommand).toHaveBeenCalledWith({
+      TopicArn: TEST_CREATE_PRODUCT_TOPIC_ARN,
+      Message: JSON.stringify({
+        message: "Product created successfully",
+        product: {
+          id: TEST_UUID,
+          title: testProductsData[0].title,
+          description: testProductsData[0].description,
+          price: testProductsData[0].price,
+          count: testProductsData[0].count,
+        },
+      }),
+      MessageAttributes: {
+        count: {
+          DataType: "Number",
+          StringValue: testProductsData[0].count.toString(),
+        },
+      },
+    });
+  });
+
   it("should handle multiple records in the event", async () => {
     await invokeHandler(testProductsData);
 
@@ -138,6 +175,7 @@ describe("catalogBatchProcess Lambda", () => {
     const result = await invokeHandler([{ description: "Test Description" }]);
 
     expect(result.batchItemFailures).toEqual([]);
+    expect(mocks.snsClientMock.send).not.toHaveBeenCalled();
     expect(mocks.docClientMock.send).not.toHaveBeenCalled();
   });
 
@@ -155,6 +193,7 @@ describe("catalogBatchProcess Lambda", () => {
 
     expect(result.batchItemFailures).toHaveLength(1);
     expect(result.batchItemFailures[0].itemIdentifier).toBeDefined();
+    expect(mocks.snsClientMock.send).not.toHaveBeenCalled();
   });
 
   it("should handle product already exists condition", async () => {
@@ -169,5 +208,6 @@ describe("catalogBatchProcess Lambda", () => {
 
     // Should not mark as failed
     expect(result.batchItemFailures).toEqual([]);
+    expect(mocks.snsClientMock.send).not.toHaveBeenCalled();
   });
 });
