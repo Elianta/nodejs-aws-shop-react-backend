@@ -5,6 +5,8 @@ import { Construct } from "constructs";
 import * as path from "path";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as sqs from "aws-cdk-lib/aws-sqs";
+import * as sns from "aws-cdk-lib/aws-sns";
+import * as subscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import { BaseLambdaConfig, LambdaFunctionBuilder } from "./builders";
 import { AppError } from "../layers/nodejs/utils/error-handler";
 
@@ -24,6 +26,7 @@ export class ProductServiceStack extends cdk.Stack {
   private lambdaEnv: Record<string, string>;
   private api: apigateway.RestApi;
   private catalogItemsQueue: sqs.Queue;
+  private createProductTopic: sns.Topic;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -31,6 +34,7 @@ export class ProductServiceStack extends cdk.Stack {
     try {
       this.initializeDynamoDbTables();
       this.createSharedLayer();
+      this.createSnsResources();
       this.setupLambdaEnvironment();
       this.createApiGateway();
 
@@ -80,6 +84,42 @@ export class ProductServiceStack extends cdk.Stack {
     }
   }
 
+  private createSnsResources(): void {
+    try {
+      this.createProductTopic = new sns.Topic(this, "CreateProductTopic", {
+        topicName: "createProductTopic",
+      });
+
+      // Get emails from environment variables
+      const primaryEmail = process.env.PRIMARY_SUBSCRIPTION_EMAIL;
+      const secondaryEmail = process.env.SECONDARY_SUBSCRIPTION_EMAIL;
+
+      if (!primaryEmail || !secondaryEmail) {
+        throw new Error(
+          "Missing required email configuration in environment variables"
+        );
+      }
+
+      // Add email subscription for all products
+      this.createProductTopic.addSubscription(
+        new subscriptions.EmailSubscription(primaryEmail)
+      );
+
+      // Add filtered subscription for products with large stock count
+      this.createProductTopic.addSubscription(
+        new subscriptions.EmailSubscription(secondaryEmail, {
+          filterPolicy: {
+            count: sns.SubscriptionFilter.numericFilter({
+              greaterThan: 30,
+            }),
+          },
+        })
+      );
+    } catch (error) {
+      throw AppError.from(error, "Failed to create SNS resources");
+    }
+  }
+
   private setupLambdaEnvironment(): void {
     try {
       // Common environment variables for Lambda functions
@@ -87,6 +127,7 @@ export class ProductServiceStack extends cdk.Stack {
         PRODUCTS_TABLE_NAME: this.productsTable.tableName,
         STOCKS_TABLE_NAME: this.stocksTable.tableName,
         PRODUCT_TITLES_TABLE_NAME: this.productTitlesTable.tableName,
+        CREATE_PRODUCT_TOPIC_ARN: this.createProductTopic.topicArn,
         REGION: cdk.Stack.of(this).region,
       };
     } catch (error) {
@@ -141,8 +182,11 @@ export class ProductServiceStack extends cdk.Stack {
         .addEventSource(this.catalogItemsQueue, {
           batchSize: 5,
           reportBatchItemFailures: true,
-        })
-        .build();
+        });
+
+      const catalogBatchFunction = catalogBatchBuilder.build();
+      // Grant SNS publish permissions to the built lambda
+      this.createProductTopic.grantPublish(catalogBatchFunction);
     } catch (error) {
       throw AppError.from(
         error,

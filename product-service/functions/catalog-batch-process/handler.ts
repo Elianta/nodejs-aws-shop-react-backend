@@ -1,5 +1,6 @@
 import { SQSHandler } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
 import {
   DynamoDBDocumentClient,
   TransactWriteCommand,
@@ -14,6 +15,7 @@ interface ValidationResult {
   error?: string;
 }
 
+const snsClient = new SNSClient({ region: process.env.REGION });
 const client = new DynamoDBClient({ region: process.env.REGION });
 const docClient = DynamoDBDocumentClient.from(client);
 
@@ -25,19 +27,19 @@ export const handler: SQSHandler = async (event) => {
 
   const failedMessageIds: string[] = [];
 
-    for (const record of event.Records) {
-      try {
+  for (const record of event.Records) {
+    try {
       let rawProduct: Omit<ProductWithStock, "id"> | null = null;
-        rawProduct = JSON.parse(record.body) as Omit<ProductWithStock, "id">;
-        const validationResult = validateProduct(rawProduct);
+      rawProduct = JSON.parse(record.body) as Omit<ProductWithStock, "id">;
+      const validationResult = validateProduct(rawProduct);
 
-        if (!validationResult.isValid || !validationResult.validatedProduct) {
+      if (!validationResult.isValid || !validationResult.validatedProduct) {
         console.log(validationResult.error || "Invalid product data");
         continue;
-        }
+      }
 
-        const product = validationResult.validatedProduct;
-        const productId = uuidv4();
+      const product = validationResult.validatedProduct;
+      const productId = uuidv4();
 
       try {
         const command = new TransactWriteCommand({
@@ -75,6 +77,30 @@ export const handler: SQSHandler = async (event) => {
         });
 
         await docClient.send(command);
+
+        // Publish to SNS
+        await snsClient.send(
+          new PublishCommand({
+            TopicArn: process.env.CREATE_PRODUCT_TOPIC_ARN,
+            Message: JSON.stringify({
+              message: "Product created successfully",
+              product: {
+                id: productId,
+                title: product.title,
+                description: product.description,
+                price: product.price,
+                count: product.count,
+              },
+            }),
+            MessageAttributes: {
+              count: {
+                DataType: "Number",
+                StringValue: product.count.toString(),
+              },
+            },
+          })
+        );
+
         console.log(`Product created successfully: ${productId}`);
       } catch (error: any) {
         // Check if error is due to ConditionExpression - don't retry
@@ -88,10 +114,10 @@ export const handler: SQSHandler = async (event) => {
           continue;
         }
         throw error; // Re-throw other errors to be caught by outer try-catch
-    }
-  } catch (error) {
-    const appError = AppError.from(error, "Error processing batch");
-    console.error(appError);
+      }
+    } catch (error) {
+      const appError = AppError.from(error, "Error processing batch");
+      console.error(appError);
       failedMessageIds.push(record.messageId);
     }
   }
