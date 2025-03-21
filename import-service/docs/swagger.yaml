@@ -6,10 +6,19 @@ info:
 servers:
   - url: https://mumn7d9j79.execute-api.eu-central-1.amazonaws.com/prod
     description: Production server
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+      description: Basic authentication using username and password encoded in base64
+  schemas: {}
 paths:
   /import:
     get:
       summary: Generate a pre-signed URL for uploading a CSV file
+      security:
+        - basicAuth: []
       description: Returns a pre-signed S3 URL that allows uploading a file to the 'uploaded/' folder in the S3 bucket
       operationId: importProductsFile
       parameters:
@@ -39,6 +48,10 @@ paths:
                   message:
                     type: string
                     example: File name is required
+        "401":
+          description: Unauthorized - Invalid credentials
+        "403":
+          description: Forbidden - Access denied
         "500":
           description: Internal server error
           content:
@@ -49,5 +62,3 @@ paths:
                   message:
                     type: string
                     example: Error generating pre-signed URL
-components:
-  schemas: {}
