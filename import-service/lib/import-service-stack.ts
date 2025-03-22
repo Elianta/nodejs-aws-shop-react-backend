@@ -15,6 +15,7 @@ export class ImportServiceStack extends cdk.Stack {
   private swaggerUi: lambda.Function;
   private sharedLayer: lambda.LayerVersion;
   private api: apigateway.RestApi;
+  private basicAuthorizer: apigateway.TokenAuthorizer;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -27,6 +28,7 @@ export class ImportServiceStack extends cdk.Stack {
     this.setupSqsQueuePermissions();
     this.setupS3EventNotifications();
     this.createApiGateway();
+    this.setupBasicAuthorizer();
     this.setupApiEndpoints();
     this.createOutputs();
   }
@@ -130,7 +132,44 @@ export class ImportServiceStack extends cdk.Stack {
         allowOrigins: apigateway.Cors.ALL_ORIGINS,
         allowMethods: apigateway.Cors.ALL_METHODS,
       },
+      defaultMethodOptions: {
+        authorizationType: apigateway.AuthorizationType.NONE,
+      },
     });
+
+    this.api.addGatewayResponse("UNAUTHORIZED", {
+      type: apigateway.ResponseType.UNAUTHORIZED,
+      responseHeaders: {
+        "Access-Control-Allow-Origin": "'*'",
+        "Access-Control-Allow-Credentials": "'true'",
+      },
+    });
+
+    this.api.addGatewayResponse("ACCESS_DENIED", {
+      type: apigateway.ResponseType.ACCESS_DENIED,
+      responseHeaders: {
+        "Access-Control-Allow-Origin": "'*'",
+        "Access-Control-Allow-Credentials": "'true'",
+      },
+    });
+  }
+
+  private setupBasicAuthorizer(): void {
+    const authorizerFn = lambda.Function.fromFunctionArn(
+      this,
+      "BasicAuthorizerFunction",
+      cdk.Fn.importValue("BasicAuthorizerArn")
+    );
+
+    this.basicAuthorizer = new apigateway.TokenAuthorizer(
+      this,
+      "BasicAuthorizer",
+      {
+        handler: authorizerFn,
+        identitySource: apigateway.IdentitySource.header("Authorization"),
+        resultsCacheTtl: cdk.Duration.seconds(0),
+      }
+    );
   }
 
   private setupApiEndpoints(): void {
@@ -153,6 +192,8 @@ export class ImportServiceStack extends cdk.Stack {
       requestParameters: {
         "method.request.querystring.name": true, // Required parameter
       },
+      authorizer: this.basicAuthorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM,
     });
 
     // Swagger UI endpoint
@@ -164,6 +205,11 @@ export class ImportServiceStack extends cdk.Stack {
     new cdk.CfnOutput(this, "ImportServiceApiUrl", {
       value: this.api.url,
       description: "URL of the Import Service API",
+    });
+
+    new cdk.CfnOutput(this, "ApiGatewayId", {
+      value: this.api.restApiId,
+      exportName: "ImportServiceApiId",
     });
 
     new cdk.CfnOutput(this, "SwaggerUIDocsURL", {
