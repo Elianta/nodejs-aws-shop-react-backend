@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Git
+.git/
+.gitignore
+
+# Environment
+.env
+.env.*
+
+# Documentation
+*.md
+README*
+
+# Tests
+test/
+coverage/
+jest.config.js
+
+# Development configs
+.prettierrc
+.eslintrc
+nodemon.json
+
+# Build artifacts
+dist/
+build/
+
+# IDE specific
+.idea/
+.vscode/
+*.sublime-*
+
+cdk/
