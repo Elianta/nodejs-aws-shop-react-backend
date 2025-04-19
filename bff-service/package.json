@@ -21,7 +21,8 @@
     "docker:build": "docker build -t bff-service .",
     "docker:run": "docker run -p 3000:3000 bff-service",
     "eb:deploy": "eb deploy",
-    "eb:logs": "eb logs"
+    "eb:logs": "eb logs",
+    "cdk:deploy": "cd cdk && npm run deploy"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.0",
